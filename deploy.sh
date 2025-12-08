@@ -42,12 +42,12 @@ echo "Current commit: ${OLD_COMMIT}"
 echo "Pulling latest changes..."
 $SSH_CMD "cd ${SERVER_PATH} && git pull origin main"
 
-echo "Pulling Docker images..."
-$SSH_CMD "cd ${SERVER_PATH} && docker compose pull"
-
 if [ "$BUILD" = "true" ]; then
     echo "Building Docker images..."
     $SSH_CMD "cd ${SERVER_PATH} && docker compose build"
+else
+    echo "Pulling Docker images..."
+    $SSH_CMD "cd ${SERVER_PATH} && docker compose pull"
 fi
 
 echo "Starting containers..."
