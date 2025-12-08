@@ -1,0 +1,30 @@
+name: 'Deploy Tool'
+description: 'Deploy an internal tool to the Linode server via SSH'
+author: 'Alpha Omega Team'
+
+inputs:
+  tool-name:
+    description: 'Name of the tool (e.g., n8n, calcom)'
+    required: true
+  server-path:
+    description: 'Path to tool on server (e.g., ~/tools/n8n)'
+    required: true
+  health-url:
+    description: 'URL to check for health after deployment'
+    required: true
+  build:
+    description: 'Run docker compose build before up (for custom images)'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Deploy to server
+      shell: bash
+      env:
+        TOOL_NAME: ${{ inputs.tool-name }}
+        SERVER_PATH: ${{ inputs.server-path }}
+        HEALTH_URL: ${{ inputs.health-url }}
+        BUILD: ${{ inputs.build }}
+      run: ${{ github.action_path }}/deploy.sh
