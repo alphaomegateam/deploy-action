@@ -55,15 +55,36 @@ $SSH_CMD "cd ${SERVER_PATH} && docker compose up -d --remove-orphans"
 
 # Health check with retry loop — some services (e.g. Grafana v12) cold-start
 # for 60-90s, longer than a single 30s wait. Poll every 10s for up to 3 minutes.
+#
+# The curl runs INSIDE the server via SSH with --resolve forcing the hostname
+# to 127.0.0.1. This bypasses Cloudflare entirely — necessary because CF's
+# Bot Fight Mode blocks GitHub Actions runner IPs, causing health checks to
+# time out against public URLs even when the service is healthy. Routing
+# through the server's local Caddy verifies the actual service-level health
+# without depending on any third-party edge.
 wait_for_health() {
     local max_wait=180
     local interval=10
     local elapsed=0
-    echo "Polling health check: ${HEALTH_URL} (max ${max_wait}s)"
+
+    # Parse host/port from HEALTH_URL for the --resolve flag.
+    local url_no_scheme="${HEALTH_URL#*://}"
+    local host_port="${url_no_scheme%%/*}"
+    local host="${host_port%%:*}"
+    local port="${host_port#*:}"
+    if [ "$host" = "$port" ]; then
+        if [[ "$HEALTH_URL" == https://* ]]; then
+            port=443
+        else
+            port=80
+        fi
+    fi
+
+    echo "Polling health check: ${HEALTH_URL} via ${SSH_HOST} (max ${max_wait}s)"
     while [ $elapsed -lt $max_wait ]; do
         sleep $interval
         elapsed=$((elapsed + interval))
-        if curl -sf --max-time 10 "${HEALTH_URL}" > /dev/null; then
+        if $SSH_CMD "curl -skf --max-time 10 --resolve '${host}:${port}:127.0.0.1' '${HEALTH_URL}'" > /dev/null 2>&1; then
             echo -e "${GREEN}Health check passed after ${elapsed}s${NC}"
             return 0
         fi
