@@ -53,30 +53,41 @@ fi
 echo "Starting containers..."
 $SSH_CMD "cd ${SERVER_PATH} && docker compose up -d --remove-orphans"
 
-# Health check
-echo "Waiting 30 seconds for service startup..."
-sleep 30
+# Health check with retry loop — some services (e.g. Grafana v12) cold-start
+# for 60-90s, longer than a single 30s wait. Poll every 10s for up to 3 minutes.
+wait_for_health() {
+    local max_wait=180
+    local interval=10
+    local elapsed=0
+    echo "Polling health check: ${HEALTH_URL} (max ${max_wait}s)"
+    while [ $elapsed -lt $max_wait ]; do
+        sleep $interval
+        elapsed=$((elapsed + interval))
+        if curl -sf --max-time 10 "${HEALTH_URL}" > /dev/null; then
+            echo -e "${GREEN}Health check passed after ${elapsed}s${NC}"
+            return 0
+        fi
+        echo "  still waiting (${elapsed}s / ${max_wait}s)..."
+    done
+    echo -e "${RED}Health check still failing after ${max_wait}s${NC}"
+    return 1
+}
 
-echo "Running health check: ${HEALTH_URL}"
-if curl -sf --max-time 10 "${HEALTH_URL}" > /dev/null; then
-    echo -e "${GREEN}Health check passed!${NC}"
+if wait_for_health; then
     echo -e "${GREEN}Deployment successful!${NC}"
     exit 0
 fi
 
 # Health check failed - rollback
-echo -e "${RED}Health check failed! Initiating rollback...${NC}"
+echo -e "${RED}Initiating rollback...${NC}"
 
 echo "Rolling back to commit: ${OLD_COMMIT}"
 $SSH_CMD "cd ${SERVER_PATH} && git reset --hard ${OLD_COMMIT}"
 $SSH_CMD "cd ${SERVER_PATH} && docker compose up -d --remove-orphans"
 
-echo "Waiting 30 seconds for rollback startup..."
-sleep 30
-
-# Check if rollback is healthy
+# Same retry logic for rollback health
 ROLLBACK_HEALTHY=true
-if ! curl -sf --max-time 10 "${HEALTH_URL}" > /dev/null; then
+if ! wait_for_health; then
     ROLLBACK_HEALTHY=false
     echo -e "${RED}Rollback also failed health check!${NC}"
 fi
