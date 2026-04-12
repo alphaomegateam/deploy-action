@@ -45,10 +45,10 @@ $SSH_CMD "cd ${SERVER_PATH} && git pull origin main"
 if [ "$BUILD" = "true" ]; then
     echo "Building Docker images..."
     $SSH_CMD "cd ${SERVER_PATH} && docker compose build"
-else
-    echo "Pulling Docker images..."
-    $SSH_CMD "cd ${SERVER_PATH} && docker compose pull"
 fi
+
+echo "Pulling Docker images..."
+$SSH_CMD "cd ${SERVER_PATH} && docker compose pull --ignore-buildable"
 
 echo "Starting containers..."
 $SSH_CMD "cd ${SERVER_PATH} && docker compose up -d --remove-orphans"
