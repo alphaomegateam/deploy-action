@@ -53,6 +53,31 @@ $SSH_CMD "cd ${SERVER_PATH} && docker compose pull --ignore-buildable"
 echo "Starting containers..."
 $SSH_CMD "cd ${SERVER_PATH} && docker compose up -d --remove-orphans"
 
+# Config-only changes (e.g. Grafana alerting provisioning, a Caddyfile) don't
+# recreate a container via `docker compose up -d` — the container definition is
+# unchanged, only bind-mounted file *contents* differ. Services that read such
+# files only at process startup therefore keep running the old config until an
+# explicit restart. When the caller opts in via `restart-on-change`, diff the
+# range this deploy pulled and restart the named services if any path matches.
+RESTARTED=false
+maybe_restart_services() {
+    [ -z "${RESTART_ON_CHANGE:-}" ] && return 0
+    local head_commit
+    head_commit=$($SSH_CMD "cd ${SERVER_PATH} && git rev-parse HEAD")
+    if [ "$OLD_COMMIT" = "$head_commit" ]; then
+        return 0  # nothing was pulled; nothing to reload
+    fi
+    if $SSH_CMD "cd ${SERVER_PATH} && git diff --name-only ${OLD_COMMIT} ${head_commit}" \
+        | grep -qE "${RESTART_ON_CHANGE}"; then
+        echo -e "${YELLOW}Config change matched '${RESTART_ON_CHANGE}' — restarting: ${RESTART_SERVICES}${NC}"
+        $SSH_CMD "cd ${SERVER_PATH} && docker compose restart ${RESTART_SERVICES}"
+        RESTARTED=true
+    fi
+}
+
+# Restart BEFORE the health check so broken provisioning is caught and rolled back.
+maybe_restart_services
+
 # Health check with retry loop — some services (e.g. Grafana v12) cold-start
 # for 60-90s, longer than a single 30s wait. Poll every 10s for up to 3 minutes.
 #
@@ -105,6 +130,14 @@ echo -e "${RED}Initiating rollback...${NC}"
 echo "Rolling back to commit: ${OLD_COMMIT}"
 $SSH_CMD "cd ${SERVER_PATH} && git reset --hard ${OLD_COMMIT}"
 $SSH_CMD "cd ${SERVER_PATH} && docker compose up -d --remove-orphans"
+
+# If we restarted services to load new config, restart them again after the
+# rollback so they pick up the reverted (known-good) config rather than staying
+# on the failed version's already-loaded state.
+if [ "$RESTARTED" = true ]; then
+    echo -e "${YELLOW}Restarting after rollback to reload reverted config: ${RESTART_SERVICES}${NC}"
+    $SSH_CMD "cd ${SERVER_PATH} && docker compose restart ${RESTART_SERVICES}"
+fi
 
 # Same retry logic for rollback health
 ROLLBACK_HEALTHY=true

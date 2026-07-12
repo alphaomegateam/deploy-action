@@ -16,6 +16,23 @@ inputs:
     description: 'Run docker compose build before up (for custom images)'
     required: false
     default: 'false'
+  restart-on-change:
+    description: >-
+      Extended-regex (grep -E) matched against files changed by this deploy.
+      When it matches, the services in `restart-services` are explicitly
+      `docker compose restart`ed after `up -d`. Use for config-only changes
+      (e.g. Grafana provisioning, Caddyfile) that a bind-mount does not
+      recreate the container for and which the service only reads at startup.
+      Empty (default) disables this step entirely.
+    required: false
+    default: ''
+  restart-services:
+    description: >-
+      Space-separated compose service names to restart when
+      `restart-on-change` matches (e.g. "grafana"). Ignored if
+      `restart-on-change` is empty.
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -27,4 +44,6 @@ runs:
         SERVER_PATH: ${{ inputs.server-path }}
         HEALTH_URL: ${{ inputs.health-url }}
         BUILD: ${{ inputs.build }}
+        RESTART_ON_CHANGE: ${{ inputs.restart-on-change }}
+        RESTART_SERVICES: ${{ inputs.restart-services }}
       run: ${{ github.action_path }}/deploy.sh
