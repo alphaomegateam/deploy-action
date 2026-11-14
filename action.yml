@@ -42,6 +42,15 @@ inputs:
       identity subject `repo:alphaomegateam/*:ref:refs/heads/main`).
     required: false
     default: 'false'
+  tailscale-authkey:
+    description: >-
+      Pre-signed, reusable, ephemeral tag:ci auth key (pass
+      `secrets.TS_CI_AUTHKEY`, an org secret). Required once Tailnet Lock is
+      on: a locked tailnet does not accept OIDC/OAuth-created nodes. When it
+      is set, it is used instead of OIDC. Rotated by the M4 job
+      `tailscale-ci-key-rotate` (alphaomega scripts/).
+    required: false
+    default: ''
   tailscale-oauth-client-id:
     description: 'Federated identity (or OAuth) client ID. Not a secret.'
     required: false
@@ -62,8 +71,18 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Join tailnet (tag:ci)
-      if: ${{ inputs.tailnet == 'true' }}
+    - name: Join tailnet (tag:ci, pre-signed auth key)
+      if: ${{ inputs.tailnet == 'true' && inputs.tailscale-authkey != '' }}
+      # tailscale/github-action v4.4.0, pinned by commit
+      uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
+      with:
+        authkey: ${{ inputs.tailscale-authkey }}
+        # Tailnet Lock: the client keeps the key authority state here.
+        statedir: ${{ runner.temp }}/tailscale-state
+        ping: ${{ inputs.tailscale-ssh-host }}
+
+    - name: Join tailnet (tag:ci, OIDC)
+      if: ${{ inputs.tailnet == 'true' && inputs.tailscale-authkey == '' }}
       # tailscale/github-action v4.4.0, pinned by commit
       uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
       with:
