@@ -63,21 +63,26 @@ These must be set at the organization level:
     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 ```
 
-## Deploy over the tailnet (opt-in, not live yet)
+## Deploy over the tailnet
 
-Set `tailscale-oauth-client-id` to make the runner join the tailnet as a short-lived `tag:ci` node and SSH to `aot` over its tailnet address (`tailscale-ssh-host`, default `100.118.68.8`) instead of `SSH_HOST`. The tailnet policy (homelab `docs/tailscale/policy.hujson`) lets `tag:ci` reach only `tag:monitoring:22`. With the input empty, nothing changes.
+`tailnet: 'true'` makes the runner join the tailnet as a short-lived `tag:ci` node and SSH to `aot` over its tailnet address (`100.118.68.8`) instead of `SSH_HOST`. Login is GitHub OIDC (Tailscale federated identity `TbMv9UXgdr11CNTRL-kTjbcbLzBJ11CNTRL`, created 2026-11-14): no secret. Only `main` branches of `alphaomegateam` repos can use it, and the tailnet policy (homelab `docs/tailscale/policy.hujson`) lets `tag:ci` reach only `tag:monitoring:22`.
 
 ```yaml
-      - name: Deploy to server
-        uses: alphaomegateam/deploy-action@v1
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: alphaomegateam/deploy-action@v1
         with:
           tool-name: Kener
           server-path: ~/tools/kener
           health-url: https://status.alphaomegateam.co/healthcheck
-          tailscale-oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          tailscale-oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tailnet: 'true'
+        env: { SSH_HOST: ..., SSH_USER: ..., SSH_PRIVATE_KEY: ..., SLACK_WEBHOOK_URL: ... }
 ```
 
-With OIDC federated identity instead of a secret: pass `tailscale-audience` and give the job `permissions: { id-token: write, contents: read }`.
-
-Public SSH on `aot` can close only after every caller uses this path (and Andrew's own `ssh aot` and the `incident-*` aliases use the tailnet).
+Token exchange errors show only on the identity's page in the Tailscale console (Settings, Trust credentials).
