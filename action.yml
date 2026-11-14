@@ -33,10 +33,41 @@ inputs:
       `restart-on-change` is empty.
     required: false
     default: ''
+  tailscale-oauth-client-id:
+    description: >-
+      Opt-in: join the tailnet as a short-lived `tag:ci` node and SSH to
+      `tailscale-ssh-host` instead of SSH_HOST. Tailscale OAuth client ID
+      (scope auth_keys, tag:ci) or OIDC federated identity client ID.
+      Empty (default) keeps the old public-SSH path.
+    required: false
+    default: ''
+  tailscale-oauth-secret:
+    description: 'Tailscale OAuth client secret (omit when using OIDC with tailscale-audience).'
+    required: false
+    default: ''
+  tailscale-audience:
+    description: 'Tailscale OIDC federated identity audience (the caller job needs `permissions: id-token: write`).'
+    required: false
+    default: ''
+  tailscale-ssh-host:
+    description: 'Tailnet address of the server (used only when tailscale-oauth-client-id is set).'
+    required: false
+    default: '100.118.68.8'
 
 runs:
   using: 'composite'
   steps:
+    - name: Join tailnet (tag:ci)
+      if: ${{ inputs.tailscale-oauth-client-id != '' }}
+      # tailscale/github-action v4.4.0, pinned by commit
+      uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
+      with:
+        oauth-client-id: ${{ inputs.tailscale-oauth-client-id }}
+        oauth-secret: ${{ inputs.tailscale-oauth-secret }}
+        audience: ${{ inputs.tailscale-audience }}
+        tags: tag:ci
+        ping: ${{ inputs.tailscale-ssh-host }}
+
     - name: Deploy to server
       shell: bash
       env:
@@ -46,4 +77,5 @@ runs:
         BUILD: ${{ inputs.build }}
         RESTART_ON_CHANGE: ${{ inputs.restart-on-change }}
         RESTART_SERVICES: ${{ inputs.restart-services }}
+        TS_SSH_HOST: ${{ inputs.tailscale-oauth-client-id != '' && inputs.tailscale-ssh-host || '' }}
       run: ${{ github.action_path }}/deploy.sh

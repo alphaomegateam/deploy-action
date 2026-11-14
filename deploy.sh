@@ -10,6 +10,11 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+# Tailnet path (opt-in): the action joined the tailnet; SSH to the tailnet address.
+if [[ -n "${TS_SSH_HOST:-}" ]]; then
+  SSH_HOST="$TS_SSH_HOST"
+fi
+
 # Validate required environment variables
 for var in TOOL_NAME SERVER_PATH HEALTH_URL SSH_HOST SSH_USER SSH_PRIVATE_KEY SLACK_WEBHOOK_URL; do
     if [ -z "${!var}" ]; then
